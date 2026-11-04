@@ -1,0 +1,1 @@
+- Allow telemetry-disabled clients to inspect live nested agents and support privacy-preserving desktop project action reporting.
