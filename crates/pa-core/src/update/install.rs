@@ -13,6 +13,7 @@ pub const KNOWN_PLATFORMS: &[&str] = &[
     "darwin-x64",
     "linux-arm64",
     "linux-x64",
+    "win32-arm64",
     "win32-x64",
 ];
 
@@ -35,6 +36,10 @@ pub fn current_platform_alias() -> &'static str {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         "linux-x64"
+    }
+    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+    {
+        "win32-arm64"
     }
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
     {
@@ -438,7 +443,7 @@ mod tests {
     #[test]
     fn anchors_the_running_release_directory() {
         let dir = tempfile::tempdir().unwrap();
-        let release = format!("0.1.0-linux-x64-{}", "a".repeat(64));
+        let release = format!("0.1.0-win32-arm64-{}", "a".repeat(64));
         let release_dir = dir.path().join(&release);
         std::fs::create_dir_all(&release_dir).unwrap();
         let exe = release_dir.join("prime-agent");

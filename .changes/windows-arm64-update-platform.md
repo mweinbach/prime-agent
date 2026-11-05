@@ -1,0 +1,1 @@
+- Windows ARM64 builds now recognize native ARM64 update archives.
