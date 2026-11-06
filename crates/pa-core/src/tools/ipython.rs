@@ -65,8 +65,15 @@ pub struct ExecuteResult {
     /// The `bash()` commands this cell started, summarized for display
     /// (`bashCommands` on the tool-result details).
     pub bash_commands: Option<crate::kernel::shared::KernelBashCommands>,
+    /// The cell's `rlm.session.messages` reads (`transcriptReads` on the
+    /// tool-result details).
+    pub transcript_reads: Vec<serde_json::Value>,
     /// The time limit that interrupted this cell, if one did.
     pub timed_out_after_ms: Option<u64>,
+    /// The cell ended the turn via the sanctioned `rlm.end_turn()` call:
+    /// the host marked the execution, and this result terminates the tool
+    /// batch (the "turn ended" note on the tool-result text).
+    pub ended_turn: bool,
 }
 
 /// The wire form of one sent agent message (TS `KernelSentAgentMessage`):
@@ -502,6 +509,12 @@ pub async fn execute_ipython(
             format!("{}\n\n{}", kernel_restart_notice(), text)
         };
     }
+    // The sanctioned turn-end confirmation: short, and it lands in the
+    // transcript for replay of the ended turn.
+    if r.ended_turn {
+        let separator = if text.is_empty() { "" } else { "\n" };
+        let _ = write!(text, "{separator}turn ended");
+    }
 
     let image_blocks = image_blocks_from_attachments(&r.attachments);
     let mut content = vec![ToolContentBlock::text(text)];
@@ -536,6 +549,9 @@ pub async fn execute_ipython(
             "count": bash.count,
             "lines": bash.lines,
         });
+    }
+    if !r.transcript_reads.is_empty() {
+        details["transcriptReads"] = json!(r.transcript_reads);
     }
     if let Some(background) = &r.background_output {
         details["backgroundOutput"] = json!(background);
@@ -572,10 +588,13 @@ pub async fn execute_ipython(
             .collect::<Vec<_>>());
     }
 
+    // The flagged cell ends the turn: the batch rule terminates the run's
+    // turn once every call in the message has executed.
     Ok(ToolExecutionResult {
         content,
         details: Some(details),
         is_error: r.status == ExecuteStatus::Error || r.status == ExecuteStatus::Aborted,
+        terminate: r.ended_turn.then_some(true),
     })
 }
 

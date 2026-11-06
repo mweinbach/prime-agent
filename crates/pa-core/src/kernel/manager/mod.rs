@@ -27,12 +27,12 @@ use crate::kernel::shared::{
     KernelShutdownOptions, LateSentAgentMessageCallback, StreamName, AGENT_MESSAGE_DISPLAY_MIME,
     ATTACHMENT_DISPLAY_MIME, BASH_ACTIVITY_DISPLAY_MIME, BASH_COMMAND_DISPLAY_MIME,
     DEFAULT_MAX_OUTPUT_CHARS, DEFAULT_SNAPSHOT_DEBOUNCE_MS, DIFF_DISPLAY_MIME,
-    FACTIVITY_SETTLE_TIMEOUT_MS, FACTIVITY_WATCH_TIMEOUT_MS_CAP, HOST_REQUEST_SHUTDOWN_TIMEOUT_MS,
-    KERNEL_ABORT_GRACE_MS, KERNEL_BUSY_AFTER_INTERRUPT_MESSAGE, KERNEL_BUSY_INTERRUPT_INTERVAL_MS,
-    KERNEL_BUSY_REUSE_WAIT_MS, KERNEL_SHUTDOWN_TIMEOUT_MS, KERNEL_STDERR_LOG_BUDGET_MARKER,
-    MAX_ATTACHMENT_DATA_CHARS, MAX_BACKGROUND_OUTPUT_CHARS, MAX_KERNEL_STDERR_CHARS,
-    MAX_KERNEL_STDERR_LOG_BYTES, MAX_LATE_SENT_AGENT_MESSAGE_HANDLERS,
-    RESTORE_EXECUTION_TIMEOUT_MS, SNAPSHOT_EXECUTION_TIMEOUT_MS,
+    END_TURN_REQUEST_TYPE, FACTIVITY_SETTLE_TIMEOUT_MS, FACTIVITY_WATCH_TIMEOUT_MS_CAP,
+    HOST_REQUEST_SHUTDOWN_TIMEOUT_MS, KERNEL_ABORT_GRACE_MS, KERNEL_BUSY_AFTER_INTERRUPT_MESSAGE,
+    KERNEL_BUSY_INTERRUPT_INTERVAL_MS, KERNEL_BUSY_REUSE_WAIT_MS, KERNEL_SHUTDOWN_TIMEOUT_MS,
+    KERNEL_STDERR_LOG_BUDGET_MARKER, MAX_ATTACHMENT_DATA_CHARS, MAX_BACKGROUND_OUTPUT_CHARS,
+    MAX_KERNEL_STDERR_CHARS, MAX_KERNEL_STDERR_LOG_BYTES, MAX_LATE_SENT_AGENT_MESSAGE_HANDLERS,
+    RESTORE_EXECUTION_TIMEOUT_MS, SNAPSHOT_EXECUTION_TIMEOUT_MS, TRANSCRIPT_READ_DISPLAY_MIME,
 };
 use crate::kernel::state_snapshot::{
     RestoreResult, SnapshotResult, SnapshotSkip, DEFAULT_SNAPSHOT_MAX_BYTES,
@@ -82,6 +82,7 @@ struct ExitInfo {
 }
 
 /// Fields of a settled execution shared with the stdout reader task.
+#[allow(clippy::struct_excessive_bools)] // independent settlement flags, not a state machine
 #[derive(Default)]
 struct ExecBuffers {
     stdout: HeadTailBuffer,
@@ -92,11 +93,14 @@ struct ExecBuffers {
     attachment_oversized: bool,
     sent_agent_messages: Vec<KernelSentAgentMessage>,
     bash_commands: Option<KernelBashCommands>,
+    transcript_reads: Vec<Value>,
     background_output: String,
     background_output_chars: usize,
     background_output_truncated: bool,
     error: Option<KernelError>,
     status: ExecuteStatus,
+    /// The cell called `rlm.end_turn()`; the host-request dispatch marks it.
+    ended_turn: bool,
     done_fields: Option<Value>,
     settled: bool,
     /// The time limit the cell outlived and was interrupted for.
@@ -134,7 +138,9 @@ impl InternalExecuteResult {
                 attachments: None,
                 sent_agent_messages: None,
                 bash_commands: None,
+                transcript_reads: None,
                 background_output: None,
+                ended_turn: false,
                 status: ExecuteStatus::Aborted,
                 error: None,
                 duration_ms: started.elapsed().as_millis() as u64,
